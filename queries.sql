@@ -1,0 +1,155 @@
+
+-- 1. Sales Aggregation by Location and Product Type
+-- Sales Summary: Aggregate total sales by store location and coffee type.
+-- SELECT store_location, SUM(money) AS total_sales 
+-- FROM coffee_sales 
+-- GROUP BY store_location
+-- ORDER BY total_sales DESC; 
+
+-- 2. Time-Series Sales Analysis: 
+-- Sales Trends: Analyze daily sales trends over time.
+-- SELECT date, SUM(money) AS daily_sales 
+-- FROM coffee_sales
+-- GROUP BY date
+-- ORDER BY date;
+
+-- 3. Join Operation: Sales and Weather Data Correlation Analysis
+-- Join With Weather Data:  Join sales data with weather data to assess the impact of weather on sales.
+-- SELECT a.date, a.weather, b.total_sales
+-- FROM weather_data a
+-- JOIN (SELECT date, SUM(money) AS total_sales FROM coffee_sales GROUP BY date) b
+-- ON a.date = b.date;
+
+-- 4. Identification of Peak Sales Days:
+-- Top Performing Days: Identify top-performing sales days based on total sales.
+-- SELECT date, SUM(money) AS total_sales
+-- FROM coffee_sales
+-- GROUP BY date
+-- HAVING SUM(money) > (SELECT AVG(total_sales) FROM (SELECT date, SUM(money) AS total_sales FROM coffee_sales GROUP BY date) sub)
+-- ORDER BY total_sales DESC;
+
+-- 5. Rolling Weekly Sales Forecasting
+-- Forecasting: Calculate rolling weekly sales using sql window functions for predictive analysis.
+-- SELECT date,
+--        SUM(money) OVER (ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS rolling_weekly_sales
+-- FROM coffee_sales
+-- ORDER BY date;
+
+-- 6. Sales Summary with Aggregation and Ranking
+-- This query ranks store locations by their sales across different coffee types and calculates the cumulative sales percentage for each store.
+-- WITH sales_summary AS (
+--     SELECT store_location, coffee_type, SUM(money) AS total_sales
+--     FROM coffee_sales
+--     GROUP BY store_location, coffee_type
+-- )
+-- SELECT store_location, 
+--        coffee_type, 
+--        total_sales, 
+--        RANK() OVER (PARTITION BY coffee_type ORDER BY total_sales DESC) AS rank_by_type,
+--        SUM(total_sales) OVER (PARTITION BY coffee_type ORDER BY total_sales DESC) / 
+--        SUM(total_sales) OVER (PARTITION BY coffee_type) * 100 AS cumulative_sales_pct
+-- FROM sales_summary
+-- ORDER BY coffee_type, total_sales DESC;
+
+-- 7. Time-Series Analysis 
+-- This query calculates the 7-day moving average of daily sales and
+-- the year-over-year (YoY) growth rate for each date.
+-- WITH sales_trend AS (
+--     SELECT date,
+--            SUM(money) AS daily_sales
+--     FROM coffee_sales
+--     GROUP BY date
+-- ),
+-- moving_avg AS (
+--     SELECT date,
+--            daily_sales,
+--            AVG(daily_sales) OVER (ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS moving_avg_7_days
+--     FROM sales_trend
+-- ),
+-- yoy_growth AS (
+--     SELECT date,
+--            daily_sales,
+--            LAG(daily_sales, 365) OVER (ORDER BY date) AS sales_last_year,
+--            CASE WHEN LAG(daily_sales, 365) OVER (ORDER BY date) IS NOT NULL
+--                 THEN (daily_sales - LAG(daily_sales, 365) OVER (ORDER BY date)) / 
+--                      LAG(daily_sales, 365) OVER (ORDER BY date) * 100
+--                 ELSE NULL 
+--            END AS yoy_growth_pct
+--     FROM sales_trend
+-- )
+-- SELECT date, 
+--        daily_sales, 
+--        moving_avg_7_days,
+--        yoy_growth_pct
+-- FROM moving_avg
+-- JOIN yoy_growth USING (date)
+-- ORDER BY date;
+
+-- 8. Join On Operation and Correlation Analysis
+-- WITH sales_weather AS ( 
+--     SELECT a.date, 
+--            a.weather, 
+--            b.total_sales
+--     FROM weather_data a
+--     JOIN (SELECT date, SUM(money) AS total_sales FROM coffee_sales GROUP BY date) b
+--     ON a.date = b.date
+-- ),
+-- weather_sales_stats AS (
+--     SELECT AVG(total_sales) AS avg_sales, 
+--            STDDEV(total_sales) AS stddev_sales, 
+--            AVG(weather) AS avg_weather, 
+--            STDDEV(weather) AS stddev_weather,
+--            SUM((weather - AVG(weather)) * (total_sales - AVG(total_sales))) OVER () AS covariance
+--     FROM sales_weather
+-- )
+-- SELECT date, 
+--        weather, 
+--        total_sales, 
+--        (covariance / (stddev_weather * stddev_sales)) AS correlation
+-- FROM sales_weather
+-- JOIN weather_sales_stats;
+
+-- 9. Top Performing Days with Recursive CTE for Promotions
+-- This query uses a recursive CTE to explore which days have the highest sales, along with identifying consecutive high performing days
+-- WITH top_sales_days AS (
+--     SELECT date, SUM(money) AS total_sales
+--     FROM coffee_sales
+--     GROUP BY date
+--     HAVING SUM(money) > (SELECT AVG(total_sales) 
+--                          FROM (SELECT date, SUM(money) AS total_sales FROM coffee_sales GROUP BY date) sub)
+-- ),
+-- recursive_promo_days AS (
+--     SELECT date, total_sales, 1 AS promo_streak
+--     FROM top_sales_days
+--     WHERE date = (SELECT MIN(date) FROM top_sales_days)
+    
+--     UNION ALL
+    
+--     SELECT t.date, t.total_sales, r.promo_streak + 1
+--     FROM top_sales_days t
+--     JOIN recursive_promo_days r 
+--     ON t.date = r.date + INTERVAL '1 day'
+-- )
+-- SELECT date, total_sales, promo_streak
+-- FROM recursive_promo_days
+-- ORDER BY promo_streak DESC, total_sales DESC;
+
+-- 10. Predictive Analysis with Exponential Smoothing and Sales Forecasting
+-- This query applies Exponential Moving Average for sales forecasting and uses SQL to predict future sales trends
+-- WITH sales_ema AS (
+--     SELECT date, 
+--            money,
+--            0.7 * SUM(money) OVER (ORDER BY date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) + 
+--            0.3 * LAG(SUM(money)) OVER (ORDER BY date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS ema
+--     FROM coffee_sales
+--     GROUP BY date, money
+-- ),
+-- forecast AS (
+--     SELECT date, 
+--            ema, 
+--            LEAD(ema, 1) OVER (ORDER BY date) AS next_day_forecast
+--     FROM sales_ema
+-- )
+-- SELECT date, ema, next_day_forecast
+-- FROM forecast
+-- ORDER BY date;
